@@ -26,6 +26,11 @@ const facultySchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
+  },
+  googleId: {
+    type: String,
+    index: true,
+    sparse: true
   }
 });
 

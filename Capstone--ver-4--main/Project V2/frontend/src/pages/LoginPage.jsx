@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRight, Shield, Sparkles } from 'lucide-react';
-import { signin, signup } from '../services/authService.js';
+import { GoogleLogin } from '@react-oauth/google';
+import { signin, signup, signinWithGoogle } from '../services/authService.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const LoginPage = () => {
@@ -15,6 +16,25 @@ const LoginPage = () => {
     email: '',
     password: ''
   });
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const idToken = credentialResponse?.credential;
+      if (!idToken) {
+        toast.error('Missing Google id_token; please try again');
+        return;
+      }
+      const payload = await signinWithGoogle(idToken);
+      login(payload);
+      toast.success('Signed in with Google');
+      navigate('/dashboard');
+    } catch (error) {
+      const message =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        'Google sign-in failed';
+      toast.error(message);
+    }
+  };
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -171,6 +191,22 @@ const LoginPage = () => {
                 {loading ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
               </button>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="h-px flex-1 bg-slate-200" />
+                or
+                <span className="h-px flex-1 bg-slate-200" />
+              </div>
+              <div className="flex justify-center">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => toast.error('Google sign-in failed')}
+                  useOneTap={false}
+                  theme="outline"
+                  shape="pill"
+                  text="continue_with"
+                />
+              </div>
             </form>
           </div>
         </div>

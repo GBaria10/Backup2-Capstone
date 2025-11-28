@@ -2,8 +2,12 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import Faculty from '../models/Faculty.js';
+import { OAuth2Client } from 'google-auth-library';
+import crypto from 'crypto';
 
 const router = express.Router();
+const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+const googleClient = googleClientId ? new OAuth2Client(googleClientId) : null;
 
 // Sign Up
 router.post('/signup', [
@@ -85,3 +89,60 @@ router.post('/signin', [
 });
 
 export default router;
+
+// Google OAuth login
+router.post('/google', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ error: 'Missing idToken' });
+    }
+
+    if (!googleClient) {
+      return res.status(500).json({ error: 'Google client not configured' });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: googleClientId
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload?.email_verified) {
+      return res.status(401).json({ error: 'Email not verified by Google' });
+    }
+
+    const email = (payload.email || '').toLowerCase();
+    const name = payload.name || email.split('@')[0];
+    const googleId = payload.sub;
+
+    let faculty = await Faculty.findOne({ email });
+    if (!faculty) {
+      faculty = new Faculty({
+        name,
+        email,
+        password: crypto.randomUUID(), // satisfies schema; hashed by pre-save hook
+        googleId
+      });
+      await faculty.save();
+    } else if (!faculty.googleId) {
+      faculty.googleId = googleId;
+      await faculty.save();
+    }
+
+    const token = jwt.sign(
+      { facultyId: faculty._id, googleId },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRATION || '7d' }
+    );
+
+    res.json({
+      message: 'Login successful',
+      token,
+      faculty: { id: faculty._id, name: faculty.name, email: faculty.email }
+    });
+  } catch (err) {
+    console.error('Google auth failed:', err.message);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
+});
